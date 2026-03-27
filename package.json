@@ -1,0 +1,12 @@
+{
+  "name": "vercel-trojan-ws",
+  "version": "1.0.0",
+  "main": "api/trojan.js",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "ws": "^8.15.0",
+    "uuid": "^9.0.0"
+  }
+}
