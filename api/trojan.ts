@@ -1,21 +1,34 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { WebSocketServer } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
-import { Buffer } from 'buffer'; // 必须显式引入 Buffer
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // 检查是否为 WebSocket 升级请求
-  if (req.headers.upgrade?.toLowerCase() === 'websocket') {
+type Req = {
+  headers: Record<string, string | string[] | undefined>;
+  socket: { server: { on: (event: string, cb: (...args: any[]) => void) => void } };
+};
+
+type Res = {
+  status: (code: number) => Res;
+  json: (body: unknown) => void;
+  end: () => void;
+  setHeader: (name: string, value: string) => void;
+};
+
+const toBase64 = (value: string) => (globalThis as any).Buffer.from(value, 'utf8').toString('base64');
+
+export default async function handler(req: Req, res: Res) {
+  const upgradeHeader = req.headers.upgrade;
+  const upgrade = Array.isArray(upgradeHeader) ? upgradeHeader[0] : upgradeHeader;
+
+  // WebSocket upgrade support on Vercel depends on runtime/proxy capabilities.
+  if (upgrade?.toLowerCase() === 'websocket') {
     const wss = new WebSocketServer({ noServer: true });
 
-    // 触发 WebSocket 升级
     req.socket.server.on('upgrade', (request, socket, head) => {
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
       });
     });
 
-    // 订阅代理流量示例
     wss.on('connection', (ws) => {
       ws.on('message', (message) => {
         console.log('Received:', message.toString());
@@ -23,13 +36,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     });
 
-    res.status(101).end(); // 升级成功
+    res.status(101).end();
     return;
   }
 
-  // 非 WebSocket 请求，返回订阅信息
+  // Non-WebSocket request: return subscription info
   const id = uuidv4();
-  const domain = req.headers.host || 'example.com';
+  const hostHeader = req.headers.host;
+  const domain = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader || 'example.com';
   const port = 443;
   const password = id;
 
@@ -45,11 +59,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     net: 'ws',
     type: 'none',
     host: domain,
-    path: '/api/trojan', // 注意 WS path 要与函数路径一致
+    path: '/api/trojan',
     tls: 'tls',
   };
 
-  const v2raySub = `vmess://${Buffer.from(JSON.stringify(v2raySubObj)).toString('base64')}`;
+  const v2raySub = `vmess://${toBase64(JSON.stringify(v2raySubObj))}`;
 
   res.setHeader('Content-Type', 'application/json');
   res.status(200).json({
